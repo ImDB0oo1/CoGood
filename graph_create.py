@@ -2,39 +2,45 @@ import networkx as nx
 import numpy as np
 from sentence_transformers import util
 import matplotlib.pyplot as plt
-
-
+import torch
 
 class GraphBuilder:
-    def __init__(self, output_dir, topics=None, concept='kmeans'):
+    def __init__(self, output_dir, topics=None, concept='kmeans', use_gpu=True):
         """
-        Initialize the GraphBuilder class.
+        Initialize the GraphBuilder class with GPU support.
 
         Parameters:
         - output_dir (str): Directory to save the output GraphML files.
         - topics (list): List of topics.
+        - concept (str): Concept type for the graph.
+        - use_gpu (bool): Whether to use GPU for embedding calculations and cosine similarity.
         """
         self.output_dir = output_dir
         self.topics = topics or ["watching", "episode", "movie", "film", "like", "good", "bad", "arts", "think"]
         self.topic_embeddings = None
         self.concept = concept
+        self.use_gpu = use_gpu
 
     def set_topic_embeddings(self, embeddings):
         """
-        Set the topic embeddings.
-
+        Set the topic embeddings and move them to GPU if required.
+        
         Parameters:
-        - embeddings (np.ndarray): Topic embeddings.
+        - embeddings (np.ndarray or torch.Tensor): Topic embeddings.
         """
-        self.topic_embeddings = embeddings
+        if self.use_gpu:
+            self.topic_embeddings = torch.tensor(embeddings).cuda() if isinstance(embeddings, np.ndarray) else embeddings.cuda()
+        else:
+            self.topic_embeddings = torch.tensor(embeddings)
 
     def make_graph(self, doc_embeddings, OOD_embeddings, knn_mode=False, threshold=0.17, k=4, plot_graph=False):
         """
         Create a graph connecting topics, ID documents, and OOD documents.
+        Uses GPU for cosine similarity if `use_gpu=True`.
 
         Parameters:
-        - doc_embeddings (np.ndarray): Embeddings of in-distribution (ID) documents.
-        - OOD_embeddings (np.ndarray): Embeddings of out-of-distribution (OOD) documents.
+        - doc_embeddings (np.ndarray or torch.Tensor): Embeddings of in-distribution (ID) documents.
+        - OOD_embeddings (np.ndarray or torch.Tensor): Embeddings of out-of-distribution (OOD) documents.
         - knn_mode (bool): Whether to use k-nearest neighbors for edge creation.
         - threshold (float): Similarity threshold for edge creation (if not using KNN).
         - k (int): Number of nearest neighbors (if knn_mode is True).
@@ -54,7 +60,7 @@ class GraphBuilder:
                 self.topics[i],
                 type="topic",
                 bipartite=0,
-                embedding=",".join(map(str, topic_embedding))  # Convert list to string
+                embedding=",".join(map(str, topic_embedding.cpu().numpy()))  # Ensure data is on CPU before converting to string
             )
 
         if knn_mode:
@@ -83,14 +89,15 @@ class GraphBuilder:
         self._connect_knn_nodes(G, OOD_embeddings, k, label=1, prefix="OOD_doc")
 
     def _connect_knn_nodes(self, G, embeddings, k, label, prefix):
-        """Connect nodes to topics using k-nearest neighbors."""
+        """Connect nodes to topics using k-nearest neighbors with GPU support."""
+        embeddings = torch.tensor(embeddings).cuda() if self.use_gpu else torch.tensor(embeddings)
         for i, embedding in enumerate(embeddings):
             G.add_node(
                 f"{prefix}{i}",
                 type=f"{prefix} document",
                 bipartite=1,
                 label=label,
-                embedding=",".join(map(str, embedding))  # Convert list to string
+                embedding=",".join(map(str, embedding.cpu().numpy()))  # Convert tensor to string
             )
             similarities = [(util.cos_sim(topic_emb, embedding).item(), j) for j, topic_emb in enumerate(self.topic_embeddings)]
             top_k_similarities = sorted(similarities, reverse=True, key=lambda x: x[0])[:k]
@@ -98,19 +105,20 @@ class GraphBuilder:
                 G.add_edge(self.topics[j], f"{prefix}{i}", weight=similarity)
 
     def _add_threshold_edges(self, G, doc_embeddings, OOD_embeddings, threshold):
-        """Add edges using a similarity threshold."""
+        """Add edges using a similarity threshold with GPU support."""
         self._connect_threshold_nodes(G, doc_embeddings, threshold, label=0, prefix="ID_doc")
         self._connect_threshold_nodes(G, OOD_embeddings, threshold, label=1, prefix="OOD_doc")
 
     def _connect_threshold_nodes(self, G, embeddings, threshold, label, prefix):
-        """Connect nodes to topics using a similarity threshold."""
+        """Connect nodes to topics using a similarity threshold with GPU support."""
+        embeddings = torch.tensor(embeddings).cuda() if self.use_gpu else torch.tensor(embeddings)
         for i, embedding in enumerate(embeddings):
             G.add_node(
                 f"{prefix}{i}",
                 type=f"{prefix} document",
                 bipartite=1,
                 label=label,
-                embedding=",".join(map(str, embedding))  # Convert list to string
+                embedding=",".join(map(str, embedding.cpu().numpy()))  # Convert tensor to string
             )
             for j, topic_emb in enumerate(self.topic_embeddings):
                 similarity = util.cos_sim(topic_emb, embedding).item()
@@ -127,4 +135,4 @@ class GraphBuilder:
         labels = nx.get_node_attributes(G, "label")
         nx.draw_networkx_labels(G, pos, labels=labels)
         plt.title("Graph of Topics and Documents")
-        plt.savefig(output_dir)
+        plt.savefig(f"{output_dir}/graph.png")

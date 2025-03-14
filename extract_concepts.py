@@ -55,7 +55,12 @@ class ExtractConcepts:
         Extract topic sentences by calculating similarity scores.
         """
         ID_sentences = self.tokenize_documents(ID_documents)
+        print("*"*20)
+        print(f'{len(ID_sentences)=}')
+        print("*"*20)
         ID_sentences_embeddings = self.extract_embeddings(ID_sentences)
+        ID_documents = [str(item) for item in ID_documents]
+        OOD_documents = [str(item) for item in OOD_documents]
         ID_embeddings = self.extract_embeddings(ID_documents)
         OOD_embeddings = self.extract_embeddings(OOD_documents)
 
@@ -90,15 +95,11 @@ class ExtractConcepts:
         """
         Tokenize multiple documents into sentences using spaCy and multiprocessing.
         """
-        with ProcessPoolExecutor() as executor:
-            sentences = list(executor.map(self.split_into_sentences, documents))
-
-        # Flatten the list of sentences
-        return [sentence for sublist in sentences for sentence in sublist]
+        return [sentence for doc in documents for sentence in self.split_into_sentences(doc)]
 
     def split_into_sentences(self, doc):
         """
         Tokenize a single document into sentences using spaCy.
         """
-        doc_nlp = self.nlp(doc)
+        doc_nlp = self.nlp(str(doc))
         return [sent.text.strip() for sent in doc_nlp.sents]

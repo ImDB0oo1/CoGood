@@ -12,16 +12,19 @@ class GCN(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=0.3)
 
     def forward(self, data):
-        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_weight
+        # Ensure data is moved to the same device as the model
+        device = data.x.device  # Get the device of the input data
+        x, edge_index, edge_weight = data.x.to(device), data.edge_index.to(device), data.edge_weight.to(device)
+        
         x = F.relu(self.conv1(x, edge_index, edge_weight))
         x = self.dropout(x)
         y = F.relu(self.conv2(x, edge_index, edge_weight))
-        # x = self.dropout(x)
+        # Uncomment and adjust for further layers if needed
         # y = F.relu(self.conv3(x, edge_index, edge_weight))
-        #y = F.relu(self.conv3(x, edge_index, edge_weight))
-        #x = self.dropout(y)
+        # x = self.dropout(y)
         x = F.sigmoid(self.linear2(y))
         return x, y
+
 
 class MLP(torch.nn.Module):
     def __init__(self, out_channels):
@@ -35,7 +38,11 @@ class MLP(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=0.3)
 
     def forward(self, data):
-        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_weight
+        # Ensure data is moved to the same device as the model
+        device = data.x.device  # Get the device of the input data
+        x, edge_index, edge_weight = data.x.to(device), data.edge_index.to(device), data.edge_weight.to(device)
+        
+        # Process the data through layers
         # x = F.relu(self.linear1(x))
         # x = self.dropout(x)
         # y = F.relu(self.linear2(x))

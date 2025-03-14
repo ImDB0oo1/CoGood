@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from torch_geometric.data import Data
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 def initialize_centers(data, model, num_centers=60):
     """
     Initialize multiple centers by clustering the embeddings of the in-distribution data.
@@ -40,6 +42,10 @@ def cosine_similarity_distance(embeddings, centers):
     Compute the cosine similarity-based distance to centers.
     Negative cosine similarity is treated as a 'distance.'
     """
+    # Ensure both embeddings and centers are on the same device
+    embeddings = embeddings.to(device)  # Move embeddings to the same device as centers
+    centers = centers.to(device)  # Move centers to the same device as embeddings
+
     embeddings = F.normalize(embeddings, p=2, dim=1)
     centers = F.normalize(centers, p=2, dim=1)
     similarity = torch.matmul(embeddings, centers.T)
